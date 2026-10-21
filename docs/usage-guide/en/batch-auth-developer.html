@@ -35,6 +35,8 @@
 
       <h2 id="protocol-overview">1. The protocol</h2>
       <p>tyutool's authorization protocol is the <strong>TuyaOpen interactive shell text-command exchange</strong> — plain ASCII, each command terminated with <code>\r\n</code>, no frame headers / checksums / opcodes. It is <strong>completely independent</strong> from the Beken BootROM binary protocol used for flashing firmware. The authorization phase talks to <strong>the CLI shell running on the booted device</strong>.</p>
+      <p>Batch authorization and read-only probes optionally accept <code>commandPrefix</code> (Rust field <code>command_prefix</code>). When omitted or empty, commands are sent as-is. Otherwise the value is trimmed at both ends and followed by one space before each non-empty authorization CLI command, for example <code>ap_cmd auth-read</code>. Multi-word prefixes are allowed, but control characters are rejected in the raw input, including leading or trailing newlines. Hardware reset, bare <code>\r\n</code> wakeups, and firmware flashing do not use the prefix. Single-device authorization remains unprefixed by default.</p>
+      <p>In prefixed mode, a device may emit <code>$</code> on its own line or attach it to an echo/UUID as a shell marker. Prompt lines and device logs beginning with <code>$</code> are recognized; a valid AuthKey that begins with <code>$</code> is preserved.</p>
       <ul>
         <li><strong>Baud</strong>: <code>115200</code> 8N1 by default (overridable per-batch via the "auth baud" config).</li>
         <li><strong>Interaction</strong>: after boot the device presents a <code>tuya&gt;</code> prompt; tyutool sends commands one by one and reads the echo to judge the result.</li>
@@ -78,9 +80,9 @@
             <td>New firmware: <code>OK: log disabled</code>; old firmware: <code>No command</code> or just returns to the <code>tuya&gt;</code> prompt</td>
           </tr>
           <tr>
-            <td><code>sys_version</code></td>
+            <td><code>version</code></td>
             <td>Read firmware version</td>
-            <td>A line like <code>project.version x.y.z</code></td>
+            <td>A line like <code>CLI version: x.y.z</code> (an optional <code>$</code> shell prompt may precede it)</td>
           </tr>
           <tr>
             <td><code>read_mac</code></td>
@@ -99,6 +101,7 @@
           </tr>
         </tbody>
       </table>
+      <p>After new firmware is detected, tyutool queries <code>version</code> up to 3 times (the initial attempt plus 2 retries). Each attempt waits up to 500 ms and may finish earlier when the <code>tuya&gt;</code> prompt arrives; a standalone <code>$</code> line does not end the read early. Failed attempts are separated by 200 ms. A parsed version of <code>1.0.0</code> or newer stops retries and is retained. A parsed version below <code>1.0.0</code> stops retries but uses the existing <code>1.0.0</code> fallback. If all 3 attempts fail to send, return a response, or parse a version, authorization also continues with that fallback. The old-firmware path does not query the version, and a configured command prefix is also applied to <code>version</code>.</p>
       <div class="callout note">
         <span class="title">Echo convention</span>
         The firmware should <strong>echo each received command line</strong> — tyutool filters out the echo of its own command and only inspects the real output that follows. Log lines (shaped like <code>[MM-DD HH:MM:SS ...]</code>) and ANSI escapes are stripped automatically; no special handling is needed for them.
@@ -149,7 +152,7 @@
       <ol class="steps">
         <li>☐ After power-on the device shows a <code>tuya&gt;</code> prompt (sending two bare <code>\r\n</code> wakes the shell).</li>
         <li>☐ Send <code>sys_log_enable off</code> → receive <code>OK: log disabled</code> (or, on old firmware, <code>No command</code> / return to the prompt).</li>
-        <li>☐ Send <code>sys_version</code> → receive a line <code>project.version x.y.z</code>.</li>
+        <li>☐ Send <code>version</code> → receive a line <code>CLI version: x.y.z</code>.</li>
         <li>☐ Send <code>read_mac</code> → receive a valid <code>XX:XX:XX:XX:XX:FF</code>.</li>
         <li>☐ Send <code>auth-read</code> on an <strong>unauthorized</strong> device → receive <code>Authorization read failure.</code></li>
         <li>☐ Send <code>auth &lt;a valid uuid + authkey&gt;</code> (UUID 16 or 20 chars, AuthKey 32 chars) → immediately receive <code>Authorization write succeeds.</code> (KV mode) or <code>Authorization write to OTP Succeeds.</code> (OTP mode).</li>
