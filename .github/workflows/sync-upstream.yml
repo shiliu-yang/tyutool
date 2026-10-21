@@ -1,0 +1,26 @@
+name: Sync refactor/v3 with upstream
+
+on:
+  schedule:
+    # Daily at 04:17 Asia/Shanghai (GitHub cron uses UTC)
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream-refactor-v3
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync fork branch from upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api --method POST "repos/$REPOSITORY/merge-upstream" \
+            -f branch="refactor/v3"
